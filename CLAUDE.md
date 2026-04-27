@@ -316,6 +316,49 @@ Alignment_via_DPO/
 
 ---
 
+## Git Branching Strategy
+
+### Branch Structure
+```
+main          ← stable, only merged PRs land here
+├── dev       ← integration branch, merge feature branches here first
+├── feature/dataset-prep
+├── feature/sft-baseline
+├── feature/dpo-training
+├── feature/evaluation
+└── feature/ablation
+```
+
+### Rules
+- **Never commit directly to `main`**
+- All work goes on a `feature/` branch
+- Open a PR → merge into `dev` first → when milestone is done, `dev` → `main`
+- One person = one branch at a time (avoids merge conflicts)
+
+### Suggested Assignment
+| Branch | Owner |
+|--------|-------|
+| `feature/dataset-prep` + `feature/sft-baseline` | Person 1 |
+| `feature/dpo-training` + `feature/ablation` | Person 2 |
+| `feature/evaluation` + `feature/report` | Person 3 |
+
+### Commands for Daily Work
+```bash
+# Start new work
+git checkout dev
+git pull origin dev
+git checkout -b feature/your-feature-name
+
+# Save progress
+git add .
+git commit -m "descriptive message"
+git push origin feature/your-feature-name
+
+# Then open PR on GitHub: feature/xxx → dev
+```
+
+---
+
 ## Dos and Don'ts
 
 ### Do
