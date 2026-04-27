@@ -1,0 +1,8 @@
+models/checkpoints/
+__pycache__/
+*.pyc
+.env
+*.egg-info/
+.ipynb_checkpoints/
+wandb/
+*.log
