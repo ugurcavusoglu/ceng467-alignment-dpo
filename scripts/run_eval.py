@@ -11,16 +11,20 @@ from data.prepare_dataset import prepare
 import evaluate as hf_evaluate
 
 def compute_perplexity(model, tokenizer, texts, batch_size=4):
-    perplexity_metric = hf_evaluate.load("perplexity", module_type="metric")
-    results = perplexity_metric.compute(
-        predictions=texts,
-        model_id=None,
-        model=model,
-        tokenizer=tokenizer,
-        batch_size=batch_size,
-        device="cuda" if torch.cuda.is_available() else "cpu",
-    )
-    return results["mean_perplexity"]
+    model.eval()
+    device = next(model.parameters()).device
+    total_loss = 0
+    total_tokens = 0
+    with torch.no_grad():
+        for text in texts:
+            inputs = tokenizer(text, return_tensors="pt", truncation=True, max_length=512).to(device)
+            outputs = model(**inputs, labels=inputs["input_ids"])
+            loss = outputs.loss
+            n_tokens = inputs["input_ids"].shape[1]
+            total_loss += loss.item() * n_tokens
+            total_tokens += n_tokens
+    import math
+    return math.exp(total_loss / total_tokens)
 
 def compute_bertscore(predictions, references):
     P, R, F1 = bert_score(predictions, references, lang="en", verbose=False)
