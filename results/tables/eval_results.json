@@ -1,0 +1,17 @@
+{
+  "zero_shot": {
+    "perplexity": 17.2757,
+    "bertscore_f1": 0.8303,
+    "n_samples": 100
+  },
+  "sft": {
+    "perplexity": 10.0842,
+    "bertscore_f1": 0.8234,
+    "n_samples": 100
+  },
+  "dpo": {
+    "perplexity": 17.666,
+    "bertscore_f1": 0.8272,
+    "n_samples": 100
+  }
+}
