@@ -5,7 +5,8 @@ import evaluate as hf_evaluate
 from bert_score import score as bert_score
 from transformers import AutoModelForCausalLM, AutoTokenizer
 import sys
-sys.path.append("..")
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from data.prepare_dataset import prepare
 
 perplexity_metric = hf_evaluate.load("perplexity", module_type="metric")
