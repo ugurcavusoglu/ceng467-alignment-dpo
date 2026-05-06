@@ -1,10 +1,10 @@
 import argparse
-from datasets import load_dataset
-from transformers import AutoModelForCausalLM, AutoTokenizer
-from trl import SFTTrainer, SFTConfig
+from transformers import AutoModelForCausalLM, AutoTokenizer, TrainingArguments
+from trl import SFTTrainer
 from peft import LoraConfig, get_peft_model
 import sys
-sys.path.append("..")
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from data.prepare_dataset import prepare
 
 def main(args):
@@ -25,13 +25,18 @@ def main(args):
     model = get_peft_model(base_model, lora_config)
     model.print_trainable_parameters()
 
+    def format_sample(sample):
+        return {"text": sample["chosen"]}
+
+    train_formatted = dataset["train"].map(format_sample)
+
     trainer = SFTTrainer(
         model=model,
         tokenizer=tokenizer,
-        train_dataset=dataset["train"],
-        eval_dataset=dataset["test"],
+        train_dataset=train_formatted,
         dataset_text_field="chosen",
-        args=SFTConfig(
+        max_seq_length=512,
+        args=TrainingArguments(
             output_dir=args.output_dir,
             num_train_epochs=args.epochs,
             per_device_train_batch_size=args.batch_size,
@@ -39,7 +44,6 @@ def main(args):
             learning_rate=args.lr,
             fp16=True,
             logging_steps=50,
-            eval_strategy="epoch",
             save_strategy="epoch",
             report_to="wandb" if args.wandb else "none",
         ),
