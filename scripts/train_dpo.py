@@ -1,10 +1,10 @@
 import argparse
-from datasets import load_dataset
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from trl import DPOTrainer, DPOConfig
-from peft import LoraConfig, get_peft_model
+from peft import LoraConfig
 import sys
-sys.path.append("..")
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from data.prepare_dataset import prepare
 
 def main(args):
@@ -12,9 +12,10 @@ def main(args):
     tokenizer = AutoTokenizer.from_pretrained(args.model_name)
     tokenizer.pad_token = tokenizer.eos_token
 
-    # Trainable model (fresh base + LoRA)
-    base_model = AutoModelForCausalLM.from_pretrained(args.model_name)
-    lora_config = LoraConfig(
+    # DPO trainable model: SFT checkpoint + fresh LoRA
+    model = AutoModelForCausalLM.from_pretrained(args.ref_model_path)
+
+    peft_config = LoraConfig(
         r=args.lora_rank,
         lora_alpha=args.lora_rank * 2,
         target_modules=["q_proj", "v_proj"],
@@ -22,20 +23,13 @@ def main(args):
         bias="none",
         task_type="CAUSAL_LM",
     )
-    model = get_peft_model(base_model, lora_config)
-
-    # Reference model: frozen SFT checkpoint
-    ref_model = AutoModelForCausalLM.from_pretrained(args.ref_model_path)
-    ref_model.eval()
-    for param in ref_model.parameters():
-        param.requires_grad = False
 
     trainer = DPOTrainer(
         model=model,
-        ref_model=ref_model,
+        ref_model=None,        # PEFT mode: base weights act as ref
         tokenizer=tokenizer,
         train_dataset=dataset["train"],
-        eval_dataset=dataset["test"],
+        peft_config=peft_config,
         args=DPOConfig(
             beta=args.beta,
             output_dir=args.output_dir,
@@ -45,9 +39,11 @@ def main(args):
             learning_rate=args.lr,
             fp16=True,
             logging_steps=50,
-            eval_strategy="epoch",
             save_strategy="epoch",
             report_to="wandb" if args.wandb else "none",
+            max_length=512,
+            max_prompt_length=256,
+            remove_unused_columns=False,
         ),
     )
     trainer.train()
@@ -60,7 +56,7 @@ if __name__ == "__main__":
     parser.add_argument("--ref_model_path", default="./models/checkpoints/sft")
     parser.add_argument("--output_dir", default="./models/checkpoints/dpo")
     parser.add_argument("--beta", type=float, default=0.1)
-    parser.add_argument("--epochs", type=int, default=3)
+    parser.add_argument("--epochs", type=int, default=1)
     parser.add_argument("--batch_size", type=int, default=2)
     parser.add_argument("--lr", type=float, default=5e-5)
     parser.add_argument("--lora_rank", type=int, default=16)
