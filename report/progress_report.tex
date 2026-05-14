@@ -37,8 +37,8 @@
 }
 
 \author{
-    Enes Ergün Hoşgör (300201053) \quad
-    Samet Buldanlıoğlu (300201085) \quad
+    Enes Ergün Hoşgör (300201053) \\
+    Samet Buldanlıoğlu (300201085) \\
     Uğur Mert Çavuşoğlu (300201087)
 }
 
@@ -244,7 +244,7 @@ automatic metrics:
 \centering
 \caption{Evaluation results on HH-RLHF test set (100 samples)}
 \label{tab:results}
-\begin{tabular}{llllp{2.8cm}}
+\begin{tabular}{lccl}
 \toprule
 \textbf{Model} & \textbf{Perplexity} $\downarrow$ & \textbf{BERTScore F1} $\uparrow$ & \textbf{Status} \\
 \midrule
@@ -393,19 +393,19 @@ python scripts/run_eval.py --n_samples 100
 
 \begin{table}[h]
 \centering
-\begin{tabular}{ll}
+\begin{tabular}{>{\ttfamily}lc}
 \toprule
 \textbf{Item} & \textbf{Status} \\
 \midrule
-GitHub repository                        & Public \\
-\texttt{requirements.txt}                & Done \\
-README with reproduction steps           & Done \\
-\texttt{data/prepare\_dataset.py}        & Done \\
-\texttt{scripts/train\_sft.py}           & Done \\
-\texttt{scripts/train\_dpo.py}           & Done \\
-\texttt{scripts/run\_eval.py}            & Done \\
-\texttt{results/tables/eval\_results.json} & Done \\
-Consistent commit history                & Active \\
+\normalfont GitHub repository   & Public \\
+requirements.txt                & Done \\
+\normalfont README              & Done \\
+data/prepare\_dataset.py        & Done \\
+scripts/train\_sft.py           & Done \\
+scripts/train\_dpo.py           & Done \\
+scripts/run\_eval.py            & Done \\
+results/tables/eval\_results.json & Done \\
+\normalfont Commit history      & Active \\
 \bottomrule
 \end{tabular}
 \caption{Repository status checklist}
