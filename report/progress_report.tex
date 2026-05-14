@@ -1,14 +1,18 @@
 \documentclass[12pt,a4paper]{article}
-\usepackage[utf8]{inputenc}
-\usepackage[T1]{fontenc}
+\usepackage{fontspec}
+\setmainfont{Latin Modern Roman}
 \usepackage{geometry}
 \usepackage{booktabs}
 \usepackage{hyperref}
 \usepackage{listings}
 \usepackage{xcolor}
 \usepackage{amsmath}
+\usepackage{amssymb}
 \usepackage{graphicx}
 \usepackage{enumitem}
+\usepackage{parskip}
+\usepackage{titlesec}
+\usepackage{array}
 
 \geometry{margin=2.5cm}
 
@@ -23,67 +27,119 @@
     basicstyle=\ttfamily\small,
     breaklines=true,
     frame=single,
-    backgroundcolor=\color{gray!10}
+    backgroundcolor=\color{gray!10},
+    columns=fullflexible
 }
 
 \title{
-    \textbf{CENG 467 --- Natural Language Understanding and Generation} \\
-    \large Progress Report: Alignment via Direct Preference Optimization (DPO) \\
-    \normalsize İzmir Institute of Technology, Spring 2026
+    \textbf{CENG 467 --- Term Project Progress Report} \\[0.5em]
+    \Large Alignment via Direct Preference Optimization (DPO)
 }
 
 \author{
-    Enes Ergün Hoşgör (300201053) \\
-    Samet Buldanlıoğlu (300201085) \\
+    Enes Ergün Hoşgör (300201053) \quad
+    Samet Buldanlıoğlu (300201085) \quad
     Uğur Mert Çavuşoğlu (300201087)
 }
 
-\date{May 14, 2026}
+\date{
+    İzmir Institute of Technology (İYTE) \\
+    CENG 467 Natural Language Understanding and Generation \\
+    Prof.\ Dr.\ Aytuğ ONAN \quad Spring 2026 \\[0.5em]
+    \textit{Submitted: May 14, 2026}
+}
 
 \begin{document}
 
 \maketitle
+\tableofcontents
+\newpage
 
 % ─────────────────────────────────────────────────────────────
 \section{Project Title, Group Members, and Problem Definition}
 
-\textbf{Project Title:} Alignment via Direct Preference Optimization (DPO)
+\subsection*{Task Description}
 
-\subsection{Problem Definition}
+This project addresses the task of \textbf{language model alignment}: steering a
+pre-trained large language model (LLM) to produce outputs that are helpful, harmless,
+and honest (HHH). Given a multi-turn conversation prompt, the system must generate a
+response that a human annotator would prefer over a harmful or evasive alternative.
 
-Large language models (LLMs) trained on internet-scale corpora tend to generate outputs that are
-unhelpful, harmful, or misaligned with human values. The task of \textit{alignment} aims to steer
-model behavior so that generated responses are helpful, harmless, and honest (HHH).
+\subsection*{Why This Task Is Important}
 
-Classical alignment pipelines rely on Reinforcement Learning from Human Feedback (RLHF) with
-Proximal Policy Optimization (PPO), which requires training a separate reward model and is known
-to be unstable. \textbf{Direct Preference Optimization (DPO)} \cite{rafailov2023} reformulates the
-RLHF objective as a supervised classification problem over preference pairs, eliminating the need
-for a reward model entirely.
+LLMs trained on internet-scale corpora tend to reproduce harmful, biased, or unhelpful
+content present in their training data. Classical alignment via Reinforcement Learning
+from Human Feedback (RLHF) with Proximal Policy Optimization (PPO) requires a separate
+reward model and is notoriously unstable to train. \textbf{Direct Preference
+Optimization (DPO)} \cite{rafailov2023} eliminates the reward model entirely by
+reformulating the RLHF objective as a supervised binary classification over
+preference pairs, yielding a simpler, more stable training procedure.
 
-In this project, we implement and evaluate DPO on the \texttt{Anthropic/hh-rlhf} dataset---a
-large-scale human preference dataset containing pairs of helpful/harmless assistant responses.
-The input is a multi-turn conversation prompt; the output is a natural language response. The core
-challenge is teaching the model to prefer safe, helpful responses over harmful or evasive ones,
-without catastrophic forgetting of language modeling ability.
+\subsection*{Input and Output}
+
+\begin{itemize}[noitemsep]
+    \item \textbf{Input:} A multi-turn conversation prompt in the format
+          \texttt{\textbackslash n\textbackslash nHuman: ...\textbackslash n\textbackslash nAssistant:}
+    \item \textbf{Output:} A natural language assistant response
+    \item \textbf{Supervision signal:} Pairwise preference labels
+          (\texttt{chosen} vs.\ \texttt{rejected} response)
+\end{itemize}
+
+\subsection*{Task Type}
+
+Conditional text generation with alignment. The task requires the model to learn a
+policy that maximises the probability of preferred responses relative to a frozen
+reference policy, without explicit reward signal.
+
+\subsection*{Technical Challenge}
+
+The core challenge is teaching the model to prefer safe, helpful responses over
+harmful or evasive ones without catastrophic forgetting of language modeling ability.
+DPO optimizes preference margins rather than pure likelihood, which can cause
+perplexity to increase relative to a supervised fine-tuning (SFT) baseline when
+training data is limited. Balancing the $\beta$ temperature parameter --- which
+controls deviation from the reference policy --- is therefore critical.
 
 % ─────────────────────────────────────────────────────────────
 \section{Dataset / Benchmark Status}
 
-\begin{itemize}[leftmargin=*]
-    \item \textbf{Dataset:} Anthropic HH-RLHF \cite{bai2022}
-    \item \textbf{Source:} \url{https://huggingface.co/datasets/Anthropic/hh-rlhf}
-    \item \textbf{Size:} 160,800 training samples, 8,505 test samples
-    \item \textbf{Format:} Each sample contains a \texttt{chosen} and a \texttt{rejected} field,
-          both containing full conversation histories in the format:\\
-          \texttt{\textbackslash n\textbackslash nHuman: ...\textbackslash n\textbackslash nAssistant: ...}
-    \item \textbf{Split:} Train / Test (no official validation split; we use test for evaluation)
+\subsection*{Dataset Information}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{ll}
+\toprule
+\textbf{Property} & \textbf{Value} \\
+\midrule
+Name              & Anthropic HH-RLHF \cite{bai2022} \\
+Source            & \url{https://huggingface.co/datasets/Anthropic/hh-rlhf} \\
+Train split       & 160,800 examples (after filtering: 159,876) \\
+Test split        & 8,505 examples \\
+Input format      & Full conversation string (\texttt{chosen} and \texttt{rejected} fields) \\
+Output format     & Preferred / dis-preferred assistant response \\
+Answer types      & Free-form natural language \\
+\bottomrule
+\end{tabular}
+\caption{HH-RLHF dataset properties}
+\end{table}
+
+\subsection*{Current Status}
+
+The dataset has been fully downloaded, preprocessed, and verified locally and on
+Google Colab / Kaggle. The preprocessing pipeline extracts structured
+\texttt{prompt}, \texttt{chosen}, and \texttt{rejected} fields from the raw
+conversation strings.
+
+\subsection*{Preprocessing Steps Completed}
+
+\begin{itemize}[noitemsep]
+    \item Split each raw conversation on the last \texttt{\textbackslash n\textbackslash nAssistant:}
+          occurrence to separate prompt from response
+    \item Filtered malformed samples (empty responses, identical chosen/rejected pairs)
+    \item Verified field lengths and encoding on a random 1,000-sample subset
 \end{itemize}
 
-\subsection{Preprocessing}
-
-The raw dataset contains full conversation strings. We extract the last assistant turn to separate
-\texttt{prompt}, \texttt{chosen} response, and \texttt{rejected} response:
+The preprocessing function is:
 
 \begin{lstlisting}[language=Python]
 def extract_prompt_and_response(sample):
@@ -93,19 +149,22 @@ def extract_prompt_and_response(sample):
     return {"prompt": prompt, "chosen": chosen, "rejected": rejected}
 \end{lstlisting}
 
-After filtering malformed samples (empty responses, identical chosen/rejected pairs), the final
-dataset contains 159,876 training and 8,505 test samples. The dataset has been fully downloaded,
-preprocessed, and verified locally and on Colab.
+\subsection*{Known Issues}
+
+\begin{itemize}[noitemsep]
+    \item No official validation split; the test split is used for evaluation.
+    \item Some long conversations are truncated at 512 tokens during model encoding.
+    \item Current training uses 3--5k samples; full 50k+ scale is planned for the
+          final submission.
+\end{itemize}
 
 % ─────────────────────────────────────────────────────────────
 \section{Literature Review Progress}
 
-\subsection{Key Papers Reviewed}
-
-\textbf{Rafailov et al. (2023) --- DPO \cite{rafailov2023}:}
-The foundational paper for this project. DPO shows that the optimal RLHF policy can be expressed
-in closed form, allowing alignment to be solved as a binary cross-entropy problem over preference
-pairs. The DPO loss is:
+\paragraph{Rafailov et al.\ (2023) --- DPO \cite{rafailov2023}.}
+The foundational paper for this project. DPO shows that the optimal RLHF policy can
+be expressed in closed form, allowing alignment to be solved as a binary
+cross-entropy problem over preference pairs. The DPO loss is:
 \[
 \mathcal{L}_\text{DPO}(\pi_\theta) = -\mathbb{E}_{(x,y_w,y_l)} \left[
     \log \sigma\!\left(
@@ -114,60 +173,78 @@ pairs. The DPO loss is:
     \right)
 \right]
 \]
-where $y_w$ is the chosen response, $y_l$ the rejected response, $\pi_\text{ref}$ the frozen
-reference model, and $\beta$ controls deviation from the reference policy.
+where $y_w$ is the chosen response, $y_l$ the rejected response,
+$\pi_\text{ref}$ the frozen reference model, and $\beta$ controls deviation
+from the reference policy.
 
-\textbf{Bai et al. (2022) --- HH-RLHF \cite{bai2022}:}
-Introduces the dataset we use and the HHH (helpful, harmless, honest) framework. Establishes the
-preference data collection methodology used by Anthropic.
+\paragraph{Bai et al.\ (2022) --- HH-RLHF \cite{bai2022}.}
+Introduces the dataset we use and the HHH (helpful, harmless, honest) framework.
+Establishes the preference data collection methodology used by Anthropic and
+provides baseline RLHF-PPO numbers that serve as our performance reference.
 
-\textbf{Ouyang et al. (2022) --- InstructGPT \cite{ouyang2022}:}
-The seminal RLHF-PPO alignment paper. Shows significant improvement in helpfulness and safety over
-base GPT-3. We use this as the baseline for understanding the problem DPO aims to simplify.
+\paragraph{Ouyang et al.\ (2022) --- InstructGPT \cite{ouyang2022}.}
+The seminal RLHF-PPO alignment paper. Shows significant improvement in helpfulness
+and safety over base GPT-3. We use this as the upper-bound reference for
+understanding the problem that DPO aims to simplify.
 
-\textbf{Hu et al. (2021) --- LoRA \cite{hu2021}:}
-Low-Rank Adaptation enables fine-tuning of large models by injecting trainable rank decomposition
-matrices into frozen weights. We use LoRA (rank=16) throughout to fit TinyLlama on a single GPU.
+\paragraph{Hu et al.\ (2021) --- LoRA \cite{hu2021}.}
+Low-Rank Adaptation enables fine-tuning of large models by injecting trainable
+rank decomposition matrices into frozen weights. We use LoRA (rank=16) throughout
+to fit TinyLlama-1.1B within the memory constraints of a single T4/A100 GPU.
 
-\subsection{Technical Direction}
+\subsection*{Technical Direction}
 
-Based on the literature, we follow the standard DPO pipeline: (1) SFT on chosen responses,
-(2) DPO fine-tuning using the SFT model as reference, (3) evaluation with automatic metrics
-and qualitative analysis.
+Based on the reviewed literature, we follow the standard DPO pipeline:
+(1) SFT on chosen responses to obtain a reference model,
+(2) DPO fine-tuning using the SFT checkpoint as the frozen reference policy,
+(3) evaluation with automatic metrics (perplexity, BERTScore) and qualitative
+analysis on harmful prompts.
 
 % ─────────────────────────────────────────────────────────────
 \section{Baseline Models}
 
-We implement two baselines for comparison with the DPO model:
+\subsection*{Baseline 1: Zero-Shot (Unaligned TinyLlama)}
 
-\begin{itemize}[leftmargin=*]
-    \item \textbf{Baseline 1 --- Zero-Shot:} The pretrained TinyLlama-1.1B model with no
-          fine-tuning. Represents the unaligned lower bound. Responds to harmful prompts without
-          refusal and exhibits repetitive generation patterns.
+The pretrained \texttt{TinyLlama/TinyLlama-1.1B-Chat-v1.0} model with no fine-tuning.
+This represents the unaligned lower bound: the model responds to harmful prompts
+without refusal and exhibits repetitive generation patterns.
 
-    \item \textbf{Baseline 2 --- SFT:} TinyLlama-1.1B fine-tuned with LoRA (r=16) on the
-          \texttt{chosen} responses only using supervised next-token prediction. No preference
-          optimization is applied. Trained for 2 epochs on 5,000 samples using
-          \texttt{TRL SFTTrainer}.
-\end{itemize}
+\textbf{Status: Fully implemented and evaluated.}
 
-Both baselines have been fully implemented and evaluated. Initial results are shown in Section~5.
+\subsection*{Baseline 2: SFT (Supervised Fine-Tuning)}
+
+TinyLlama-1.1B fine-tuned with LoRA (r=16) on the \texttt{chosen} responses only,
+using supervised next-token prediction via \texttt{TRL SFTTrainer}. No preference
+optimization is applied. Trained for 2 epochs on 5,000 samples.
+
+\textbf{Status: Fully implemented and evaluated.}
+
+\subsection*{Why These Baselines}
+
+Zero-shot TinyLlama establishes the unaligned lower bound and isolates the effect of
+any fine-tuning. SFT isolates the contribution of preference optimization: by training
+only on chosen responses without DPO, any additional gains from the DPO model can be
+attributed specifically to the contrastive preference objective rather than to
+supervised exposure to high-quality responses.
 
 % ─────────────────────────────────────────────────────────────
 \section{Initial Experimental Results}
 
-All three models were evaluated on 100 test samples using:
-\begin{itemize}[leftmargin=*]
-    \item \textbf{Perplexity:} Computed as $\exp(\text{mean NLL loss})$ on the chosen test responses.
+Table~\ref{tab:results} reports evaluation results on 100 test samples using two
+automatic metrics:
+
+\begin{itemize}[noitemsep]
+    \item \textbf{Perplexity:} $\exp(\text{mean NLL loss})$ on chosen test responses.
           Lower is better.
-    \item \textbf{BERTScore F1:} Semantic similarity between generated responses and chosen
-          references using RoBERTa-Large. Higher is better.
+    \item \textbf{BERTScore F1:} Semantic similarity between generated responses and
+          chosen references using RoBERTa-Large. Higher is better.
 \end{itemize}
 
 \begin{table}[h]
 \centering
-\caption{Evaluation Results (100 test samples)}
-\begin{tabular}{lccc}
+\caption{Evaluation results on HH-RLHF test set (100 samples)}
+\label{tab:results}
+\begin{tabular}{llllp{2.8cm}}
 \toprule
 \textbf{Model} & \textbf{Perplexity} $\downarrow$ & \textbf{BERTScore F1} $\uparrow$ & \textbf{Status} \\
 \midrule
@@ -178,125 +255,188 @@ DPO ($\beta$=0.1, 3k, 1 ep.) & 17.67 & \textbf{0.8272} & Complete \\
 \end{tabular}
 \end{table}
 
-\subsection{Interpretation}
+\subsection*{Interpretation}
 
-SFT achieves the lowest perplexity (10.08), significantly improving language modeling quality by
-training on preferred responses. DPO shows slightly higher perplexity than zero-shot due to
-limited training data (3,000 samples, 1 epoch) and the fact that DPO optimizes for preference
-margins rather than pure language modeling likelihood. However, DPO achieves the highest
-BERTScore (0.8272), indicating better semantic alignment with human-preferred responses.
+SFT achieves the lowest perplexity (10.08), significantly improving language modeling
+quality by training on preferred responses. DPO shows slightly higher perplexity than
+zero-shot due to limited training data (3,000 samples, 1 epoch) and the fact that
+DPO optimizes for preference margins rather than pure language modeling likelihood.
+However, DPO achieves the highest BERTScore F1 (0.8272), indicating better semantic
+alignment with human-preferred responses despite the perplexity regression.
 
-Qualitatively, the most important difference is in behavior on harmful prompts. The zero-shot
-model provides lock-picking instructions and endorses alcohol consumption, while the DPO model
-shows greater tendency toward refusal. Full qualitative comparison will be provided in the final
-report.
+Qualitatively, the most important difference is behavior on harmful prompts. The
+zero-shot model provides lock-picking instructions and endorses unsafe behavior,
+while the DPO model shows greater tendency toward refusal. Full qualitative
+comparison will be provided in the final report.
 
 % ─────────────────────────────────────────────────────────────
 \section{Planned Improvements and Technical Direction}
 
-For the final submission, we plan to:
+The core contribution of this project is scaling DPO training and rigorously evaluating
+alignment quality. The planned pipeline proceeds as follows:
 
-\begin{enumerate}[leftmargin=*]
-    \item \textbf{Scale training data:} Increase from 5k/3k to 50k+ samples for both SFT and DPO.
-    \item \textbf{More training epochs:} 2-3 epochs for DPO to allow better preference learning.
-    \item \textbf{Win-rate evaluation:} Use a reward model to compute DPO vs.\ SFT win-rate.
-    \item \textbf{Ablation study:} Sweep $\beta \in \{0.01, 0.05, 0.1, 0.2, 0.5\}$ and LoRA
-          rank $\in \{8, 16, 32\}$.
+\begin{enumerate}[noitemsep]
+    \item \textbf{Scale training data:} Increase from 5k/3k to 50k+ samples for both
+          SFT and DPO to allow better preference generalization.
+    \item \textbf{More training epochs:} 2--3 epochs for DPO to allow the preference
+          objective to fully converge.
+    \item \textbf{Win-rate evaluation:} Use a reward model to compute DPO vs.\ SFT
+          win-rate on a held-out preference test set.
+    \item \textbf{Ablation study:} Sweep $\beta \in \{0.01, 0.05, 0.1, 0.2, 0.5\}$
+          and LoRA rank $\in \{8, 16, 32\}$ to identify optimal hyperparameters.
 \end{enumerate}
 
 % ─────────────────────────────────────────────────────────────
 \section{Ablation / Prompt Sensitivity Plan}
 
-The primary ablation will vary the DPO temperature parameter $\beta$, which controls the
-trade-off between alignment and deviation from the reference policy:
+We plan the following ablations to isolate the contribution of each design choice:
 
-\begin{itemize}[leftmargin=*]
-    \item $\beta \in \{0.01, 0.05, 0.1, 0.2, 0.5\}$ --- primary ablation
-    \item Learning rate $\in \{1\text{e-}5, 5\text{e-}5, 1\text{e-}4\}$
-    \item LoRA rank $\in \{8, 16, 32\}$
-\end{itemize}
+\begin{table}[h]
+\centering
+\begin{tabular}{ll}
+\toprule
+\textbf{Ablation} & \textbf{Variable} \\
+\midrule
+A1 & Zero-shot vs.\ SFT vs.\ DPO: effect of each training stage \\
+A2 & $\beta \in \{0.01, 0.05, 0.1, 0.2, 0.5\}$: DPO temperature sensitivity \\
+A3 & LoRA rank $\in \{8, 16, 32\}$: parameter efficiency trade-off \\
+A4 & Learning rate $\in \{1\text{e-}5, 5\text{e-}5, 1\text{e-}4\}$: optimizer sensitivity \\
+A5 & Training data scale: 5k vs.\ 20k vs.\ 50k samples \\
+\bottomrule
+\end{tabular}
+\caption{Planned ablation study}
+\end{table}
 
-Results will be reported in a table showing perplexity and BERTScore for each configuration.
+Results will be reported as a table of perplexity and BERTScore F1 for each
+configuration, with the win-rate metric added once the reward model evaluation
+is implemented.
 
 % ─────────────────────────────────────────────────────────────
 \section{Error Analysis and Generation Quality Plan}
 
-We will select 20--30 test samples where the DPO model fails to outperform the SFT baseline and
-categorize failures into:
+\subsection*{Planned Error Analysis}
 
-\begin{itemize}[leftmargin=*]
+We will select 20--30 test samples where the DPO model fails to outperform the SFT
+baseline and categorize failures as follows:
+
+\begin{itemize}[noitemsep]
     \item \textbf{Hallucination:} Factually incorrect claims stated with confidence.
-    \item \textbf{Refusal failure:} Model complies with clearly harmful requests.
+    \item \textbf{Refusal failure:} Model complies with a clearly harmful request.
     \item \textbf{Repetition:} Degenerate looping behavior (observed in SFT outputs).
     \item \textbf{Off-topic:} Response does not address the prompt.
 \end{itemize}
 
-Generation quality will also be analyzed for coherence, fluency, and relevance on a random
-sample of 50 test prompts.
+\subsection*{Generation Quality Plan}
+
+Once the full-scale model is trained, we will evaluate on a random sample of 50 test
+prompts: factual correctness relative to gold chosen responses, fluency and coherence
+of generated text, and hallucination rate (answers not grounded in any retrieved
+evidence). We will include side-by-side qualitative examples of zero-shot, SFT, and
+DPO outputs on a representative set of harmful, ambiguous, and benign prompts.
 
 % ─────────────────────────────────────────────────────────────
 \section{Ethical Considerations and Bias}
 
-The HH-RLHF dataset introduces several ethical concerns:
+This project uses the Anthropic HH-RLHF dataset derived from human preference
+annotations. Potential concerns include:
 
-\begin{itemize}[leftmargin=*]
-    \item \textbf{Annotator bias:} Human preference labels reflect the demographics and values of
-          Anthropic's crowd workers, which may not generalize across cultures or languages.
-    \item \textbf{Over-refusal:} DPO may cause the model to refuse benign requests that superficially
-          resemble harmful ones.
-    \item \textbf{Reward hacking:} The model may learn to produce outputs that satisfy the DPO
+\begin{itemize}[noitemsep]
+    \item \textbf{Annotator bias:} Human preference labels reflect the demographics
+          and values of Anthropic's crowd workers, which may not generalize across
+          cultures or languages.
+    \item \textbf{Over-refusal:} DPO may cause the model to refuse benign requests
+          that superficially resemble harmful ones.
+    \item \textbf{Reward hacking:} The model may learn outputs that satisfy the DPO
           loss without being genuinely helpful or harmless.
-    \item \textbf{Adversarial misuse:} An aligned model can still be misled via prompt injection
-          or jailbreaks.
+    \item \textbf{Adversarial misuse:} An aligned model can still be misled via prompt
+          injection or jailbreaks not represented in the training distribution.
 \end{itemize}
 
 % ─────────────────────────────────────────────────────────────
 \section{GitHub and Reproducibility Status}
 
-\begin{itemize}[leftmargin=*]
-    \item \textbf{Repository:} \url{https://github.com/ugurcavusoglu/ceng467-alignment-dpo}
-    \item \textbf{Structure:} \texttt{data/}, \texttt{scripts/}, \texttt{notebooks/},
-          \texttt{results/tables/}, \texttt{report/}
-    \item \textbf{Scripts:} \texttt{data/prepare\_dataset.py}, \texttt{scripts/train\_sft.py},
-          \texttt{scripts/train\_dpo.py}, \texttt{scripts/run\_eval.py}
-    \item \textbf{Dependencies:} \texttt{requirements.txt} present
-    \item \textbf{README:} Present with step-by-step reproduction instructions
-    \item \textbf{Results:} \texttt{results/tables/eval\_results.json} committed
-    \item \textbf{Commit history:} Active development with consistent commits
-\end{itemize}
+\textbf{Repository:} \url{https://github.com/ugurcavusoglu/ceng467-alignment-dpo}
 
-To reproduce results:
+\subsection*{Current Repository Structure}
+
 \begin{lstlisting}
+ceng467-alignment-dpo/
+├── data/
+│   └── prepare_dataset.py      # HH-RLHF download and preprocessing
+├── scripts/
+│   ├── train_sft.py            # SFT baseline (TinyLlama + LoRA)
+│   ├── train_dpo.py            # DPO fine-tuning (TRL DPOTrainer)
+│   └── run_eval.py             # Perplexity + BERTScore evaluation
+├── results/
+│   └── tables/
+│       └── eval_results.json   # Evaluation output (all 3 models)
+├── report/
+│   └── progress_report.tex
+├── requirements.txt
+├── .gitignore
+└── README.md
+\end{lstlisting}
+
+\subsection*{Reproducibility Instructions}
+
+\begin{lstlisting}[language=bash]
 git clone https://github.com/ugurcavusoglu/ceng467-alignment-dpo.git
 cd ceng467-alignment-dpo
-pip install transformers==4.44.2 trl==0.10.1 peft==0.12.0 accelerate==0.34.0 datasets
+pip install transformers==4.44.2 trl==0.10.1 peft==0.12.0 \
+            accelerate==0.34.0 datasets bert-score
 python scripts/train_sft.py --subset 5000
 python scripts/train_dpo.py --subset 3000
 python scripts/run_eval.py --n_samples 100
 \end{lstlisting}
 
+\subsection*{Repository Status}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{ll}
+\toprule
+\textbf{Item} & \textbf{Status} \\
+\midrule
+GitHub repository                        & Public \\
+\texttt{requirements.txt}                & Done \\
+README with reproduction steps           & Done \\
+\texttt{data/prepare\_dataset.py}        & Done \\
+\texttt{scripts/train\_sft.py}           & Done \\
+\texttt{scripts/train\_dpo.py}           & Done \\
+\texttt{scripts/run\_eval.py}            & Done \\
+\texttt{results/tables/eval\_results.json} & Done \\
+Consistent commit history                & Active \\
+\bottomrule
+\end{tabular}
+\caption{Repository status checklist}
+\end{table}
+
 % ─────────────────────────────────────────────────────────────
 \section{Current Challenges and Next Steps}
 
-\subsection{Challenges}
-\begin{itemize}[leftmargin=*]
-    \item \textbf{GPU memory:} TinyLlama with LoRA fits on a T4/A100, but DPO requires loading
-          both model and reference model simultaneously, increasing memory pressure.
-    \item \textbf{Session limits:} Colab/Kaggle session timeouts require checkpointing strategy
-          for longer training runs.
-    \item \textbf{TRL API instability:} TRL v1.3.0 introduced breaking changes; we pinned to
-          v0.10.1 for stability.
-    \item \textbf{Limited training data:} Current results use 3--5k samples; scaling to 50k+
-          is needed for final evaluation.
+\subsection*{Current Challenges}
+
+\begin{itemize}[noitemsep]
+    \item \textbf{GPU memory:} DPO requires loading both the policy model and the
+          frozen reference model simultaneously, increasing memory pressure relative
+          to SFT. TinyLlama with LoRA fits on a T4/A100, but longer sequences are
+          constrained.
+    \item \textbf{Session limits:} Colab/Kaggle session timeouts require a
+          checkpointing strategy for longer training runs at the 50k+ scale.
+    \item \textbf{TRL API instability:} TRL v1.3.0 introduced breaking API changes;
+          we pinned to v0.10.1 for stability.
+    \item \textbf{Limited training data:} Current results use 3--5k samples; scaling
+          to 50k+ is needed for final evaluation and meaningful ablation comparisons.
 \end{itemize}
 
-\subsection{Next Steps (Weeks 12--15)}
-\begin{enumerate}[leftmargin=*]
-    \item Scale SFT and DPO training to 50k+ samples
-    \item Run ablation study over $\beta$ values
+\subsection*{Next Steps Before Final Submission}
+
+\begin{enumerate}[noitemsep]
+    \item Scale SFT and DPO training to 50k+ samples on GPU
+    \item Run the full ablation study over $\beta$, learning rate, and LoRA rank
     \item Implement win-rate evaluation with a reward model
     \item Perform error analysis on 20--30 failure cases
-    \item Write final LNCS paper (6--8 pages)
+    \item Write the final report in LNCS format (6--8 pages)
     \item Prepare live demo
 \end{enumerate}
 
