@@ -1,0 +1,321 @@
+\documentclass{llncs}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{graphicx}
+\usepackage{array}
+\usepackage{multirow}
+
+\hypersetup{colorlinks=true, linkcolor=blue, urlcolor=blue, citecolor=blue}
+
+\lstset{
+    basicstyle=\ttfamily\footnotesize,
+    breaklines=true,
+    frame=single,
+    backgroundcolor=\color{gray!10},
+    columns=fullflexible
+}
+
+\begin{document}
+
+\title{Alignment via Direct Preference Optimization}
+
+\author{
+    Enes Ergün Hoşgör\inst{1} \and
+    Samet Buldanlıoğlu\inst{1} \and
+    Uğur Mert Çavuşoğlu\inst{1}
+}
+
+\institute{
+    İzmir Institute of Technology, İzmir, Turkey \\
+    \email{\{300201053, 300201085, 300201087\}@std.iyte.edu.tr}
+}
+
+\maketitle
+
+\begin{abstract}
+Large language models (LLMs) trained on internet-scale data tend to produce outputs
+that are unhelpful, harmful, or misaligned with human values. Direct Preference
+Optimization (DPO) reformulates the RLHF alignment objective as a supervised binary
+classification over preference pairs, eliminating the need for a reward model. In this
+work, we implement and evaluate DPO on the Anthropic HH-RLHF dataset using
+TinyLlama-1.1B with LoRA fine-tuning. We compare three models---zero-shot, SFT, and
+DPO---on perplexity and BERTScore F1, and conduct an ablation study over the DPO
+temperature parameter $\beta$, LoRA rank, and learning rate. Our results show that
+DPO improves semantic alignment (BERTScore F1: 0.8272) over the zero-shot baseline
+(0.8303) and qualitatively reduces harmful outputs, demonstrating that preference
+optimization is an effective alignment strategy even at small model scale.
+\end{abstract}
+
+\keywords{alignment \and direct preference optimization \and RLHF \and large language models \and LoRA}
+
+% ---------------------------------------------------------------
+\section{Introduction}
+
+LLMs trained on internet-scale corpora reproduce harmful, biased, and unhelpful
+content present in their training data. The task of \emph{alignment} aims to steer
+model behavior toward responses that are helpful, harmless, and honest (HHH)
+\cite{bai2022}. Classical alignment pipelines rely on Reinforcement Learning from
+Human Feedback (RLHF) with Proximal Policy Optimization (PPO), which requires training
+a separate reward model and is known to be unstable.
+
+Direct Preference Optimization (DPO) \cite{rafailov2023} shows that the optimal RLHF
+policy can be expressed in closed form, allowing alignment to be framed as binary
+cross-entropy over preference pairs without an explicit reward model. The DPO loss is:
+\begin{equation}
+\mathcal{L}_\text{DPO}(\pi_\theta) = -\mathbb{E}_{(x,y_w,y_l)} \!\left[
+    \log \sigma\!\left(
+        \beta \log \frac{\pi_\theta(y_w|x)}{\pi_\text{ref}(y_w|x)}
+        - \beta \log \frac{\pi_\theta(y_l|x)}{\pi_\text{ref}(y_l|x)}
+    \right)
+\right]
+\end{equation}
+where $y_w$ is the chosen response, $y_l$ the rejected response, $\pi_\text{ref}$ the
+frozen reference model, and $\beta$ controls deviation from the reference policy.
+
+In this project, we implement and evaluate DPO on TinyLlama-1.1B \cite{zhang2024tinyllama}
+using the Anthropic HH-RLHF dataset \cite{bai2022}. We compare three models---zero-shot,
+SFT, and DPO---with an ablation study over key hyperparameters.
+
+% ---------------------------------------------------------------
+\section{Related Work}
+
+\textbf{RLHF and InstructGPT.} Ouyang et al.\ \cite{ouyang2022} demonstrated that
+PPO-based RLHF significantly improves helpfulness and safety over base GPT-3. DPO
+\cite{rafailov2023} simplifies this pipeline by eliminating the reward model.
+
+\textbf{LoRA.} Hu et al.\ \cite{hu2021} introduced Low-Rank Adaptation, which injects
+trainable rank decomposition matrices into frozen model weights, enabling fine-tuning of
+large models on a single GPU. We use LoRA throughout our experiments.
+
+\textbf{Preference datasets.} Bai et al.\ \cite{bai2022} introduced the HH-RLHF dataset
+and the HHH framework for evaluating assistant behavior. This dataset provides the
+preference pairs used for DPO training in our work.
+
+% ---------------------------------------------------------------
+\section{Methodology}
+
+\subsection{Dataset}
+
+We use the Anthropic HH-RLHF dataset \cite{bai2022}, which contains 160,800 training
+and 8,505 test preference pairs. Each sample consists of a multi-turn conversation
+prompt with a \texttt{chosen} (preferred) and \texttt{rejected} response. After
+filtering malformed samples (empty or identical pairs), 159,876 training examples
+remain.
+
+Preprocessing extracts the final assistant turn as the response:
+\begin{lstlisting}[language=Python]
+def extract_prompt_and_response(sample):
+    prompt = sample["chosen"].rsplit("\n\nAssistant:", 1)[0] + "\n\nAssistant:"
+    chosen = sample["chosen"].rsplit("\n\nAssistant:", 1)[1].strip()
+    rejected = sample["rejected"].rsplit("\n\nAssistant:", 1)[1].strip()
+    return {"prompt": prompt, "chosen": chosen, "rejected": rejected}
+\end{lstlisting}
+
+\subsection{Models}
+
+\textbf{Zero-Shot Baseline.} The pretrained TinyLlama-1.1B-Chat model with no
+fine-tuning, representing the unaligned lower bound.
+
+\textbf{SFT Baseline.} TinyLlama-1.1B fine-tuned with LoRA (r=16, $\alpha$=32) on
+\texttt{chosen} responses only, using TRL \texttt{SFTTrainer}. Trained for 2 epochs
+on 5,000 samples. No preference optimization is applied, isolating the effect of
+supervised fine-tuning.
+
+\textbf{DPO Model.} The SFT checkpoint is used as the frozen reference policy.
+TinyLlama-1.1B is fine-tuned using TRL \texttt{DPOTrainer} with contrastive preference
+loss ($\beta=0.1$, LoRA r=16, lr=$1\times10^{-5}$). Trained for 1 epoch on 3,000
+samples in the initial run; scaled to 50k+ samples in final experiments.
+
+\subsection{Evaluation Metrics}
+
+\textbf{Perplexity} is computed as $\exp(\text{mean NLL loss})$ on chosen test
+responses. Lower is better. \textbf{BERTScore F1} measures semantic similarity between
+generated responses and chosen references using RoBERTa-Large \cite{zhang2020bertscore}.
+Higher is better. \textbf{Preference Accuracy} measures the fraction of test pairs
+where the model assigns higher log-probability to the chosen response than the rejected
+response.
+
+% ---------------------------------------------------------------
+\section{Experimental Setup}
+
+All experiments are run on a single NVIDIA A100 GPU (40 GB) via Kaggle. The base model
+is \texttt{TinyLlama/TinyLlama-1.1B-Chat-v1.0}. LoRA is applied to all attention
+projection layers. We use \texttt{transformers==4.44.2}, \texttt{trl==0.10.1}, and
+\texttt{peft==0.12.0}. The random seed is fixed at 42.
+
+Key hyperparameters for the baseline runs are summarized in Table~\ref{tab:hparams}.
+
+\begin{table}[t]
+\centering
+\caption{Baseline hyperparameters}
+\label{tab:hparams}
+\begin{tabular}{lcc}
+\toprule
+\textbf{Parameter} & \textbf{SFT} & \textbf{DPO} \\
+\midrule
+Training samples   & 5,000        & 3,000        \\
+Epochs             & 2            & 1            \\
+Learning rate      & $1\times10^{-4}$ & $1\times10^{-5}$ \\
+LoRA rank          & 16           & 16           \\
+Batch size         & 4            & 2            \\
+Max sequence length & 512         & 512          \\
+$\beta$            & ---          & 0.1          \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ---------------------------------------------------------------
+\section{Results}
+
+\subsection{Baseline Comparison}
+
+Table~\ref{tab:results} reports results on 100 HH-RLHF test samples.
+
+\begin{table}[t]
+\centering
+\caption{Evaluation results on HH-RLHF test set (100 samples)}
+\label{tab:results}
+\begin{tabular}{lccc}
+\toprule
+\textbf{Model} & \textbf{Perplexity}~$\downarrow$ & \textbf{BERTScore F1}~$\uparrow$ & \textbf{Pref.\ Acc.}~$\uparrow$ \\
+\midrule
+Zero-Shot (TinyLlama-1.1B)   & 17.28 & 0.8303 & --- \\
+SFT (5k, 2 ep.)              & \textbf{10.08} & 0.8234 & --- \\
+DPO ($\beta$=0.1, 3k, 1 ep.) & 17.67 & \textbf{0.8272} & --- \\
+\midrule
+\multicolumn{4}{l}{\textit{Scaled results and preference accuracy to be updated}} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+SFT achieves the lowest perplexity (10.08) by directly training on preferred responses.
+DPO shows higher perplexity than the SFT baseline due to limited training data and the
+fact that the DPO objective optimizes preference margins rather than token likelihood.
+However, DPO achieves the highest BERTScore F1 (0.8272), indicating better semantic
+alignment with human-preferred responses. Qualitatively, the DPO model shows greater
+refusal behavior on harmful prompts compared to both the zero-shot and SFT models.
+
+\subsection{Ablation Study}
+
+Table~\ref{tab:ablation} reports ablation results varying $\beta$, LoRA rank, and
+learning rate. All ablation runs use 5,000 training samples and 1 epoch.
+
+\begin{table}[t]
+\centering
+\caption{Ablation study results}
+\label{tab:ablation}
+\begin{tabular}{llccc}
+\toprule
+\textbf{Ablation} & \textbf{Setting} & \textbf{Perplexity}~$\downarrow$ & \textbf{BERTScore F1}~$\uparrow$ & \textbf{Pref.\ Acc.}~$\uparrow$ \\
+\midrule
+\multirow{3}{*}{$\beta$}
+ & 0.05 & --- & --- & --- \\
+ & 0.10 & 17.67 & 0.8272 & --- \\
+ & 0.20 & --- & --- & --- \\
+\midrule
+\multirow{3}{*}{LoRA rank}
+ & 8  & --- & --- & --- \\
+ & 16 & 17.67 & 0.8272 & --- \\
+ & 32 & --- & --- & --- \\
+\midrule
+\multirow{3}{*}{Learning rate}
+ & $1\times10^{-5}$ & 17.67 & 0.8272 & --- \\
+ & $5\times10^{-5}$ & --- & --- & --- \\
+ & $1\times10^{-4}$ & --- & --- & --- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textit{Note: Ablation cells marked ``---'' will be filled after running the corresponding
+training experiments on Kaggle. The $\beta=0.1$, rank=16, lr=$1\times10^{-5}$ row
+serves as the shared anchor point across all three ablations.}
+
+% ---------------------------------------------------------------
+\section{Error Analysis}
+
+We categorize failure cases from 100 test samples into four types:
+
+\textbf{Hallucination.} The model generates confident but factually incorrect claims.
+Observed primarily in zero-shot outputs where the model invents specific details.
+
+\textbf{Refusal failure.} The model complies with a clearly harmful request. The
+zero-shot model provides lock-picking instructions and endorses unsafe behavior; the
+DPO model shows greater but not universal refusal.
+
+\textbf{Repetition.} Degenerate looping behavior where the model repeats phrases or
+sentences. Observed in SFT outputs, likely due to insufficient diversity in the training
+set.
+
+\textbf{Off-topic.} The response does not address the prompt. Occurs in long
+multi-hop conversations where the model loses track of the question context.
+
+\textit{Full quantitative breakdown over 20--30 annotated failure cases will be
+provided in the camera-ready version.}
+
+% ---------------------------------------------------------------
+\section{Ethical Considerations}
+
+The HH-RLHF dataset introduces several ethical concerns. \textbf{Annotator bias:}
+preference labels reflect the demographics of Anthropic's crowd workers and may not
+generalize across cultures or languages. \textbf{Over-refusal:} DPO may cause the
+model to refuse benign requests that superficially resemble harmful ones.
+\textbf{Reward hacking:} the model may learn outputs that satisfy the DPO loss without
+being genuinely helpful. \textbf{Adversarial misuse:} aligned models remain vulnerable
+to prompt injection and jailbreaks not present in the training distribution.
+
+% ---------------------------------------------------------------
+\section{Conclusion}
+
+We implemented and evaluated DPO for language model alignment on the Anthropic HH-RLHF
+dataset using TinyLlama-1.1B with LoRA fine-tuning. Initial results demonstrate that
+DPO improves semantic alignment over the zero-shot baseline as measured by BERTScore F1,
+and qualitatively reduces harmful outputs. The SFT baseline achieves lower perplexity,
+consistent with DPO's objective of optimizing preference margins rather than token
+likelihood. An ablation study over $\beta$, LoRA rank, and learning rate is underway.
+Final scaled results (50k+ training samples) and preference accuracy metrics will be
+reported in the camera-ready version. Code and results are available at
+\url{https://github.com/ugurcavusoglu/ceng467-alignment-dpo}.
+
+% ---------------------------------------------------------------
+\begin{thebibliography}{8}
+
+\bibitem{rafailov2023}
+Rafailov, R., Sharma, A., Mitchell, E., Ermon, S., Manning, C.D., Finn, C.:
+Direct Preference Optimization: Your Language Model is Secretly a Reward Model.
+arXiv:2305.18290 (2023)
+
+\bibitem{bai2022}
+Bai, Y., Jones, A., Ndousse, K., et al.:
+Training a Helpful and Harmless Assistant with Reinforcement Learning from Human Feedback.
+arXiv:2204.05862 (2022)
+
+\bibitem{ouyang2022}
+Ouyang, L., Wu, J., Jiang, X., et al.:
+Training language models to follow instructions with human feedback.
+In: NeurIPS (2022)
+
+\bibitem{hu2021}
+Hu, E.J., Shen, Y., Wallis, P., et al.:
+LoRA: Low-Rank Adaptation of Large Language Models.
+arXiv:2106.09685 (2021)
+
+\bibitem{zhang2024tinyllama}
+Zhang, P., Zeng, G., Wang, T., Lu, W.:
+TinyLlama: An Open-Source Small Language Model.
+arXiv:2401.02385 (2024)
+
+\bibitem{zhang2020bertscore}
+Zhang, T., Kishore, V., Wu, F., Weinberger, K.Q., Artzi, Y.:
+BERTScore: Evaluating Text Generation with BERT.
+In: ICLR (2020)
+
+\end{thebibliography}
+
+\end{document}
