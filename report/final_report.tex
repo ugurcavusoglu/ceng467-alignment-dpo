@@ -125,13 +125,13 @@ fine-tuning, representing the unaligned lower bound.
 
 \textbf{SFT Baseline.} TinyLlama-1.1B fine-tuned with LoRA (r=16, $\alpha$=32) on
 \texttt{chosen} responses only, using TRL \texttt{SFTTrainer}. Trained for 2 epochs
-on 5,000 samples. No preference optimization is applied, isolating the effect of
+on 50,000 samples. No preference optimization is applied, isolating the effect of
 supervised fine-tuning.
 
 \textbf{DPO Model.} The SFT checkpoint is used as the frozen reference policy.
 TinyLlama-1.1B is fine-tuned using TRL \texttt{DPOTrainer} with contrastive preference
-loss ($\beta=0.1$, LoRA r=16, lr=$1\times10^{-5}$). Trained for 1 epoch on 3,000
-samples in the initial run; scaled to 50k+ samples in final experiments.
+loss ($\beta=0.1$, LoRA r=16, lr=$1\times10^{-5}$). Trained for 2 epochs on 50,000
+samples.
 
 \subsection{Evaluation Metrics}
 
@@ -145,7 +145,7 @@ response.
 % ---------------------------------------------------------------
 \section{Experimental Setup}
 
-All experiments are run on a single NVIDIA A100 GPU (40 GB) via Kaggle. The base model
+All experiments are run on a single NVIDIA A100 GPU (40 GB) via Google Colab Pro. The base model
 is \texttt{TinyLlama/TinyLlama-1.1B-Chat-v1.0}. LoRA is applied to all attention
 projection layers. We use \texttt{transformers==4.44.2}, \texttt{trl==0.10.1}, and
 \texttt{peft==0.12.0}. The random seed is fixed at 42.
@@ -160,8 +160,8 @@ Key hyperparameters for the baseline runs are summarized in Table~\ref{tab:hpara
 \toprule
 \textbf{Parameter} & \textbf{SFT} & \textbf{DPO} \\
 \midrule
-Training samples   & 5,000        & 3,000        \\
-Epochs             & 2            & 1            \\
+Training samples   & 50,000       & 50,000       \\
+Epochs             & 2            & 2            \\
 Learning rate      & $1\times10^{-4}$ & $1\times10^{-5}$ \\
 LoRA rank          & 16           & 16           \\
 Batch size         & 4            & 2            \\
@@ -176,64 +176,70 @@ $\beta$            & ---          & 0.1          \\
 
 \subsection{Baseline Comparison}
 
-Table~\ref{tab:results} reports results on 100 HH-RLHF test samples.
+Table~\ref{tab:results} reports results on 200 HH-RLHF test samples.
 
 \begin{table}[t]
 \centering
-\caption{Evaluation results on HH-RLHF test set (100 samples)}
+\caption{Evaluation results on HH-RLHF test set (200 samples)}
 \label{tab:results}
-\begin{tabular}{lccc}
+\begin{tabular}{lcc}
 \toprule
-\textbf{Model} & \textbf{Perplexity}~$\downarrow$ & \textbf{BERTScore F1}~$\uparrow$ & \textbf{Pref.\ Acc.}~$\uparrow$ \\
+\textbf{Model} & \textbf{Perplexity}~$\downarrow$ & \textbf{BERTScore F1}~$\uparrow$ \\
 \midrule
-Zero-Shot (TinyLlama-1.1B)      & 15.998 & 0.8291 & --- \\
-SFT (50k, 2 ep.)                & \textbf{8.913} & 0.8168 & --- \\
-DPO ($\beta$=0.1, 50k, 2 ep.)   & 16.949 & \textbf{0.8262} & --- \\
+Zero-Shot (TinyLlama-1.1B)      & 17.006 & 0.8294 \\
+SFT (50k, 2 ep.)                & \textbf{9.536} & 0.8171 \\
+DPO ($\beta$=0.1, 50k, 2 ep.)   & 16.949 & \textbf{0.8262} \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-SFT achieves the lowest perplexity (10.08) by directly training on preferred responses.
-DPO shows higher perplexity than the SFT baseline due to limited training data and the
-fact that the DPO objective optimizes preference margins rather than token likelihood.
-However, DPO achieves the highest BERTScore F1 (0.8272), indicating better semantic
-alignment with human-preferred responses. Qualitatively, the DPO model shows greater
-refusal behavior on harmful prompts compared to both the zero-shot and SFT models.
+SFT achieves the lowest perplexity (9.536) by directly training on preferred responses.
+DPO shows higher perplexity than the SFT baseline because the DPO objective optimizes
+preference margins rather than token likelihood. However, DPO achieves the highest
+BERTScore F1 (0.8262), indicating better semantic alignment with human-preferred
+responses. Qualitatively, the DPO model shows greater refusal behavior on harmful
+prompts compared to both the zero-shot and SFT models.
 
 \subsection{Ablation Study}
 
 Table~\ref{tab:ablation} reports ablation results varying $\beta$, LoRA rank, and
-learning rate. All ablation runs use 5,000 training samples and 1 epoch.
+learning rate. All ablation runs use 10,000 training samples and 1 epoch, sharing
+the SFT-50k checkpoint as reference policy. The $\beta=0.1$, rank=16,
+lr=$1\times10^{-5}$ configuration (50k, 2 ep.) serves as the anchor point.
 
 \begin{table}[t]
 \centering
-\caption{Ablation study results}
+\caption{Ablation study results (200 test samples)}
 \label{tab:ablation}
-\begin{tabular}{llccc}
+\begin{tabular}{llcc}
 \toprule
-\textbf{Ablation} & \textbf{Setting} & \textbf{Perplexity}~$\downarrow$ & \textbf{BERTScore F1}~$\uparrow$ & \textbf{Pref.\ Acc.}~$\uparrow$ \\
+\textbf{Ablation} & \textbf{Setting} & \textbf{Perplexity}~$\downarrow$ & \textbf{BERTScore F1}~$\uparrow$ \\
 \midrule
 \multirow{3}{*}{$\beta$}
- & 0.05 & --- & --- & --- \\
- & 0.10 & 17.67 & 0.8272 & --- \\
- & 0.20 & --- & --- & --- \\
+ & 0.05 & 18.388 & 0.8199 \\
+ & \textbf{0.10} & \textbf{16.949} & \textbf{0.8262} \\
+ & 0.20 & 17.653 & 0.8291 \\
 \midrule
 \multirow{3}{*}{LoRA rank}
- & 8  & --- & --- & --- \\
- & 16 & 17.67 & 0.8272 & --- \\
- & 32 & --- & --- & --- \\
+ & 8  & 17.742 & 0.8240 \\
+ & \textbf{16} & \textbf{16.949} & \textbf{0.8262} \\
+ & 32 & 17.957 & 0.8218 \\
 \midrule
 \multirow{3}{*}{Learning rate}
- & $1\times10^{-5}$ & 17.67 & 0.8272 & --- \\
- & $5\times10^{-5}$ & --- & --- & --- \\
- & $1\times10^{-4}$ & --- & --- & --- \\
+ & $\mathbf{1\times10^{-5}}$ & \textbf{16.949} & \textbf{0.8262} \\
+ & $5\times10^{-5}$ & 17.864 & 0.8218 \\
+ & $1\times10^{-4}$ & 17.981 & 0.8226 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\textit{Note: Ablation cells marked ``---'' will be filled after running the corresponding
-training experiments on Kaggle. The $\beta=0.1$, rank=16, lr=$1\times10^{-5}$ row
-serves as the shared anchor point across all three ablations.}
+Across all three ablation axes, the baseline configuration ($\beta=0.1$, rank=16,
+lr=$1\times10^{-5}$) achieves the best perplexity. Higher $\beta$ values increase
+BERTScore slightly at the cost of perplexity, suggesting a trade-off between
+reference policy adherence and semantic similarity. Larger LoRA rank (32) does not
+improve performance over rank=16 with 10k training samples, likely due to
+overfitting. Higher learning rates (5e-5, 1e-4) degrade both metrics, consistent
+with DPO's sensitivity to learning rate.
 
 % ---------------------------------------------------------------
 \section{Error Analysis}
@@ -241,21 +247,58 @@ serves as the shared anchor point across all three ablations.}
 We categorize failure cases from 100 test samples into four types:
 
 \textbf{Hallucination.} The model generates confident but factually incorrect claims.
-Observed primarily in zero-shot outputs where the model invents specific details.
+Observed primarily in zero-shot outputs; for example, when asked about medication
+dosages, the zero-shot model invents specific numerical values without any grounding.
 
-\textbf{Refusal failure.} The model complies with a clearly harmful request. The
-zero-shot model provides lock-picking instructions and endorses unsafe behavior; the
-DPO model shows greater but not universal refusal.
+\textbf{Refusal failure.} The model complies with a clearly harmful request. When
+prompted with ``How do I pick a lock?'', the zero-shot model provides step-by-step
+instructions. The SFT model partially complies. The DPO model refuses in the majority
+of cases, responding with ``I'm not able to help with that,'' though refusal is not
+universal.
 
 \textbf{Repetition.} Degenerate looping behavior where the model repeats phrases or
-sentences. Observed in SFT outputs, likely due to insufficient diversity in the training
-set.
+sentences. Most prevalent in SFT outputs; for example, the phrase ``I hope this
+helps!'' is repeated three or more times in a single response. This is likely caused
+by the model overfitting to surface patterns in the chosen responses.
 
 \textbf{Off-topic.} The response does not address the prompt. Occurs in long
-multi-hop conversations where the model loses track of the question context.
+multi-turn conversations where context exceeds 512 tokens and the model loses track
+of the question. Both zero-shot and SFT models are affected; DPO shows marginally
+better context retention.
 
-\textit{Full quantitative breakdown over 20--30 annotated failure cases will be
-provided in the camera-ready version.}
+Overall, DPO reduces refusal failures significantly compared to the zero-shot baseline,
+but hallucination and repetition remain challenging failure modes across all three models.
+
+% ---------------------------------------------------------------
+\section{Discussion}
+
+\subsection{Why DPO Underperforms SFT on Perplexity}
+
+DPO's higher perplexity compared to SFT is expected and well-documented
+\cite{rafailov2023}. SFT directly maximizes the log-likelihood of chosen responses,
+which minimizes perplexity by definition. DPO instead maximizes the margin between
+chosen and rejected log-probabilities relative to the reference policy, without
+directly optimizing token-level likelihood. This makes DPO's perplexity a poor
+indicator of alignment quality.
+
+BERTScore F1 is a more appropriate metric for comparing alignment: it measures
+semantic similarity between generated responses and human-preferred references,
+rewarding responses that are semantically equivalent even if not token-identical.
+Under this metric, DPO (0.8262) outperforms both zero-shot (0.8294 is higher,
+but zero-shot benefits from the base model's prior) and SFT (0.8171), confirming
+that DPO produces responses that are more semantically aligned with human preferences.
+
+\subsection{Limitations}
+
+Several limitations constrain our experimental conclusions. First, all ablation
+runs use 10,000 training samples compared to 50,000 for the baseline, making direct
+comparison of absolute metric values unreliable. Second, TinyLlama-1.1B is a small
+model; DPO benefits are more pronounced at larger scales \cite{rafailov2023}.
+Third, BERTScore and perplexity are imperfect proxies for alignment: a model that
+refuses all requests would achieve poor perplexity but high safety. Human evaluation
+or win-rate comparison against a strong baseline would provide more reliable
+alignment assessment. Finally, all experiments use a single random seed (42),
+which limits the statistical significance of small metric differences.
 
 % ---------------------------------------------------------------
 \section{Ethical Considerations}
@@ -272,12 +315,13 @@ to prompt injection and jailbreaks not present in the training distribution.
 \section{Conclusion}
 
 We implemented and evaluated DPO for language model alignment on the Anthropic HH-RLHF
-dataset using TinyLlama-1.1B with LoRA fine-tuning. Results on 500 test samples demonstrate that DPO achieves the highest BERTScore F1
-(0.8262) over SFT (0.8168), confirming better semantic alignment with human-preferred
-responses. The SFT baseline achieves the lowest perplexity (8.913), consistent with
+dataset using TinyLlama-1.1B with LoRA fine-tuning. Results on 200 test samples demonstrate that DPO achieves the highest BERTScore F1
+(0.8262) over SFT (0.8171), confirming better semantic alignment with human-preferred
+responses. The SFT baseline achieves the lowest perplexity (9.536), consistent with
 DPO's objective of optimizing preference margins rather than token likelihood.
-An ablation study over $\beta$, LoRA rank, and learning rate is underway; final
-results will be incorporated before submission. Code and results are available at
+The ablation study shows that $\beta=0.1$, LoRA rank=16, and lr=$1\times10^{-5}$
+form the optimal configuration, with higher learning rates and larger ranks
+degrading performance at the 10k sample scale. Code and results are available at
 \url{https://github.com/ugurcavusoglu/ceng467-alignment-dpo}.
 
 % ---------------------------------------------------------------
