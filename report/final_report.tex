@@ -49,7 +49,7 @@ TinyLlama-1.1B with LoRA fine-tuning. We compare three models---zero-shot, SFT, 
 DPO---on perplexity and BERTScore F1, and conduct an ablation study over the DPO
 temperature parameter $\beta$, LoRA rank, and learning rate. Our results show that
 DPO improves semantic alignment (BERTScore F1: 0.8262) over the SFT baseline
-(0.8168) and qualitatively reduces harmful outputs, demonstrating that preference
+(0.8171) and qualitatively reduces harmful outputs, demonstrating that preference
 optimization is an effective alignment strategy even at small model scale.
 \end{abstract}
 
@@ -138,9 +138,7 @@ samples.
 \textbf{Perplexity} is computed as $\exp(\text{mean NLL loss})$ on chosen test
 responses. Lower is better. \textbf{BERTScore F1} measures semantic similarity between
 generated responses and chosen references using RoBERTa-Large \cite{zhang2020bertscore}.
-Higher is better. \textbf{Preference Accuracy} measures the fraction of test pairs
-where the model assigns higher log-probability to the chosen response than the rejected
-response.
+Higher is better.
 
 % ---------------------------------------------------------------
 \section{Experimental Setup}
@@ -348,7 +346,8 @@ to prompt injection and jailbreaks not present in the training distribution.
 \section{Conclusion}
 
 We implemented and evaluated DPO for language model alignment on the Anthropic HH-RLHF
-dataset using TinyLlama-1.1B with LoRA fine-tuning. Results on 200 test samples demonstrate that DPO achieves the highest BERTScore F1
+dataset using TinyLlama-1.1B with LoRA fine-tuning. Results on 200 test samples
+demonstrate that DPO achieves the highest BERTScore F1
 (0.8262) over SFT (0.8171), confirming better semantic alignment with human-preferred
 responses. The SFT baseline achieves the lowest perplexity (9.536), consistent with
 DPO's objective of optimizing preference margins rather than token likelihood.
