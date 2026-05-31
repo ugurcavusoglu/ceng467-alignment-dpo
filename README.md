@@ -98,7 +98,9 @@ python scripts/train_dpo.py --lr 5e-5 --subset 10000 --epochs 1 \
 │   └── run_eval.py
 ├── notebooks/               # Colab training notebooks
 │   ├── sft_dpo_training_50k.ipynb
-│   └── ablation_runs.ipynb
+│   ├── ablation_runs.ipynb
+│   ├── ablation_eval.ipynb
+│   └── demo.ipynb
 ├── results/tables/          # Evaluation results (JSON)
 ├── report/                  # LaTeX report (LNCS format)
 │   └── final_report.tex
