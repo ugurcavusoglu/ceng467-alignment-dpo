@@ -92,7 +92,10 @@ PPO-based RLHF significantly improves helpfulness and safety over base GPT-3. DP
 
 \textbf{LoRA.} Hu et al.\ \cite{hu2021} introduced Low-Rank Adaptation, which injects
 trainable rank decomposition matrices into frozen model weights, enabling fine-tuning of
-large models on a single GPU. We use LoRA throughout our experiments.
+large models on a single GPU. For a weight matrix $W$, LoRA adds a low-rank update
+$W' = W + \frac{\alpha}{r}BA$, where $B \in \mathbb{R}^{d \times r}$,
+$A \in \mathbb{R}^{r \times k}$, and $r \ll \min(d,k)$. We apply LoRA to the query
+and value projection layers throughout our experiments.
 
 \textbf{Preference datasets.} Bai et al.\ \cite{bai2022} introduced the HH-RLHF dataset
 and the HHH framework for evaluating assistant behavior. This dataset provides the
@@ -144,8 +147,8 @@ Higher is better.
 \section{Experimental Setup}
 
 All experiments are run on a single NVIDIA A100 GPU (40 GB) via Google Colab Pro. The base model
-is \texttt{TinyLlama/TinyLlama-1.1B-Chat-v1.0}. LoRA is applied to all attention
-projection layers. We use \texttt{transformers==4.44.2}, \texttt{trl==0.10.1}, and
+is \texttt{TinyLlama/TinyLlama-1.1B-Chat-v1.0}. LoRA is applied to the query and value
+projection layers (\texttt{q\_proj}, \texttt{v\_proj}). We use \texttt{transformers==4.44.2}, \texttt{trl==0.10.1}, and
 \texttt{peft==0.12.0}. The random seed is fixed at 42.
 
 Key hyperparameters for the baseline runs are summarized in Table~\ref{tab:hparams}.
