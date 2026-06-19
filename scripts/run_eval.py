@@ -10,6 +10,10 @@ from data.prepare_dataset import prepare
 
 import evaluate as hf_evaluate
 
+rouge_metric = hf_evaluate.load("rouge")
+bleu_metric = hf_evaluate.load("bleu")
+meteor_metric = hf_evaluate.load("meteor")
+
 def compute_perplexity(model, tokenizer, texts, batch_size=4):
     model.eval()
     device = next(model.parameters()).device
@@ -29,6 +33,30 @@ def compute_perplexity(model, tokenizer, texts, batch_size=4):
 def compute_bertscore(predictions, references):
     P, R, F1 = bert_score(predictions, references, lang="en", verbose=False)
     return F1.mean().item()
+
+def compute_rouge(predictions, references):
+    result = rouge_metric.compute(predictions=predictions, references=references)
+    return {k: round(v, 4) for k, v in result.items()}
+
+def compute_bleu(predictions, references):
+    result = bleu_metric.compute(predictions=predictions, references=[[r] for r in references])
+    return round(result["bleu"], 4)
+
+def compute_meteor(predictions, references):
+    result = meteor_metric.compute(predictions=predictions, references=references)
+    return round(result["meteor"], 4)
+
+def compute_distinct_n(predictions, n=2):
+    all_ngrams = []
+    total_ngrams = 0
+    for text in predictions:
+        tokens = text.split()
+        ngrams = [tuple(tokens[i:i+n]) for i in range(len(tokens) - n + 1)]
+        all_ngrams.extend(ngrams)
+        total_ngrams += len(ngrams)
+    if total_ngrams == 0:
+        return 0.0
+    return round(len(set(all_ngrams)) / total_ngrams, 4)
 
 def generate_responses(model, tokenizer, prompts, max_new_tokens=128):
     responses = []
@@ -62,10 +90,32 @@ def evaluate_model(model_path, dataset, n_samples=100, base_model_name=None):
     print(f"  Computing BERTScore...")
     bs_f1 = compute_bertscore(predictions, references)
 
+    print(f"  Computing ROUGE...")
+    rouge = compute_rouge(predictions, references)
+
+    print(f"  Computing BLEU...")
+    bleu = compute_bleu(predictions, references)
+
+    print(f"  Computing METEOR...")
+    meteor = compute_meteor(predictions, references)
+
+    print(f"  Computing Distinct-2 (diversity)...")
+    distinct2 = compute_distinct_n(predictions, n=2)
+
     del model
     torch.cuda.empty_cache()
 
-    return {"perplexity": round(ppl, 4), "bertscore_f1": round(bs_f1, 4), "n_samples": n_samples}
+    return {
+        "perplexity": round(ppl, 4),
+        "bertscore_f1": round(bs_f1, 4),
+        "rouge1": rouge["rouge1"],
+        "rouge2": rouge["rouge2"],
+        "rougeL": rouge["rougeL"],
+        "bleu": bleu,
+        "meteor": meteor,
+        "distinct_2": distinct2,
+        "n_samples": n_samples,
+    }
 
 def main(args):
     dataset = prepare()
